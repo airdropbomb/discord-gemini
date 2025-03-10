@@ -16,74 +16,74 @@ google_api_key = os.getenv('GOOGLE_API_KEY')
 
 last_message_id = None
 bot_user_id = None
-last_ai_response = None  # Menyimpan respons AI terakhir
+last_ai_response = None  # Store the last AI response
 
 def log_message(message):
     print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
 
 def generate_reply(prompt, use_google_ai=True, use_file_reply=False, language="id"):
-    """Membuat balasan, menghindari duplikasi jika menggunakan Google Gemini AI"""
+    """Generate a reply, avoiding duplication if using Google Gemini AI"""
 
-    global last_ai_response  # Gunakan variabel global agar dapat diakses di seluruh sesi
+    global last_ai_response  # Use global variable to access it across the session
 
     if use_file_reply:
-        log_message("💬 Menggunakan pesan dari file sebagai balasan.")
+        log_message("💬 Using message from file as a reply.")
         return {"candidates": [{"content": {"parts": [{"text": get_random_message()}]}}]}
 
     if use_google_ai:
-        # Pilihan bahasa
+        # Language selection
         if language == "en":
             ai_prompt = f"{prompt}\n\nRespond with only one sentence in casual urban English, like a natural conversation, and do not use symbols."
         else:
-            ai_prompt = f"{prompt}\n\nBerikan 1 kalimat saja dalam bahasa gaul daerah Jakarta seperti obrolan dan jangan gunakan simbol apapun."
+            ai_prompt = f"{prompt}\n\nGive 1 sentence in Jakarta slang like a casual chat and don’t use any symbols."
 
         url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
         headers = {'Content-Type': 'application/json'}
         data = {'contents': [{'parts': [{'text': ai_prompt}]}]}
 
-        for attempt in range(3):  # Coba sampai 3 kali jika AI mengulang pesan yang sama
+        for attempt in range(3):  # Try up to 3 times if AI repeats the same message
             try:
                 response = requests.post(url, headers=headers, json=data)
                 response.raise_for_status()
                 ai_response = response.json()
 
-                # Ambil teks dari respons AI
+                # Get text from AI response
                 response_text = ai_response['candidates'][0]['content']['parts'][0]['text']
 
-                # Cek apakah respons AI sama dengan yang terakhir
+                # Check if AI response is the same as the last one
                 if response_text == last_ai_response:
-                    log_message("⚠️ AI memberikan balasan yang sama, mencoba ulang...")
-                    continue  # Coba lagi dengan permintaan baru
+                    log_message("⚠️ AI gave the same reply, trying again...")
+                    continue  # Retry with a new request
                 
-                last_ai_response = response_text  # Simpan respons terbaru
+                last_ai_response = response_text  # Save the latest response
                 return ai_response
 
             except requests.exceptions.RequestException as e:
                 log_message(f"⚠️ Request failed: {e}")
                 return None
 
-        log_message("⚠️ AI terus memberikan balasan yang sama, menggunakan respons terakhir yang tersedia.")
-        return {"candidates": [{"content": {"parts": [{"text": last_ai_response or 'Maaf, tidak dapat membalas pesan.'}]}}]}
+        log_message("⚠️ AI keeps giving the same reply, using the last available response.")
+        return {"candidates": [{"content": {"parts": [{"text": last_ai_response or 'Sorry, cannot reply to the message.'}]}}]}
 
     else:
         return {"candidates": [{"content": {"parts": [{"text": get_random_message()}]}}]}
 
 def get_random_message():
-    """Mengambil pesan acak dari file pesan.txt"""
+    """Get a random message from the pesan.txt file"""
     try:
         with open('pesan.txt', 'r') as file:
             lines = file.readlines()
             if lines:
                 return random.choice(lines).strip()
             else:
-                log_message("File pesan.txt kosong.")
-                return "Tidak ada pesan yang tersedia."
+                log_message("File pesan.txt is empty.")
+                return "No messages available."
     except FileNotFoundError:
-        log_message("File pesan.txt tidak ditemukan.")
-        return "File pesan.txt tidak ditemukan."
+        log_message("File pesan.txt not found.")
+        return "File pesan.txt not found."
 
 def send_message(channel_id, message_text, reply_to=None, reply_mode=True):
-    """Mengirim pesan ke Discord, bisa dengan atau tanpa reply"""
+    """Send a message to Discord, with or without a reply"""
     headers = {
         'Authorization': f'{discord_token}',
         'Content-Type': 'application/json'
@@ -91,7 +91,7 @@ def send_message(channel_id, message_text, reply_to=None, reply_mode=True):
 
     payload = {'content': message_text}
 
-    # Hanya tambahkan reply jika reply_mode diaktifkan
+    # Only add reply if reply_mode is enabled
     if reply_mode and reply_to:
         payload['message_reference'] = {'message_id': reply_to}
 
@@ -107,7 +107,7 @@ def send_message(channel_id, message_text, reply_to=None, reply_mode=True):
         log_message(f"⚠️ Request error: {e}")
 
 def auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_reply, language, reply_mode):
-    """Fungsi untuk auto-reply di Discord dengan menghindari duplikasi AI"""
+    """Function for auto-reply on Discord while avoiding AI duplication"""
     global last_message_id, bot_user_id
 
     headers = {'Authorization': f'{discord_token}'}
@@ -138,7 +138,7 @@ def auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_repl
                         log_message(f"💬 Received message: {user_message}")
 
                         result = generate_reply(user_message, use_google_ai, use_file_reply, language)
-                        response_text = result['candidates'][0]['content']['parts'][0]['text'] if result else "Maaf, tidak dapat membalas pesan."
+                        response_text = result['candidates'][0]['content']['parts'][0]['text'] if result else "Sorry, cannot reply to the message."
 
                         log_message(f"⏳ Waiting {reply_delay} seconds before replying...")
                         time.sleep(reply_delay)
@@ -152,28 +152,28 @@ def auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_repl
             time.sleep(read_delay)
 
 if __name__ == "__main__":
-    use_reply = input("Ingin menggunakan fitur auto-reply? (y/n): ").lower() == 'y'
-    channel_id = input("Masukkan ID channel: ")
+    use_reply = input("Want to use the auto-reply feature? (y/n): ").lower() == 'y'
+    channel_id = input("Enter channel ID: ")
 
     if use_reply:
-        use_google_ai = input("Gunakan Google Gemini AI untuk balasan? (y/n): ").lower() == 'y'
-        use_file_reply = input("Gunakan pesan dari file pesan.txt? (y/n): ").lower() == 'y'
-        reply_mode = input("Ingin membalas pesan (reply) atau hanya mengirim pesan? (reply/send): ").lower() == 'reply'
-        language_choice = input("Pilih bahasa untuk balasan (id/en): ").lower()
+        use_google_ai = input("Use Google Gemini AI for replies? (y/n): ").lower() == 'y'
+        use_file_reply = input("Use messages from pesan.txt file? (y/n): ").lower() == 'y'
+        reply_mode = input("Want to reply to messages or just send messages? (reply/send): ").lower() == 'reply'
+        language_choice = input("Choose reply language (id/en): ").lower()
 
         if language_choice not in ["id", "en"]:
-            log_message("⚠️ Bahasa tidak valid, default ke bahasa Indonesia.")
-            language_choice = "id"
+            log_message("⚠️ Invalid language, defaulting to english.")
+            language_choice = "en"
 
-        read_delay = int(input("Set Delay Membaca Pesan Terbaru (dalam detik): "))
-        reply_delay = int(input("Set Delay Balas Pesan (dalam detik): "))
+        read_delay = int(input("Set delay for reading new messages (in seconds): "))
+        reply_delay = int(input("Set delay for replying to messages (in seconds): "))
 
-        log_message(f"✅ Mode reply {'aktif' if reply_mode else 'non-reply'} dalam bahasa {'Indonesia' if language_choice == 'id' else 'Inggris'}...")
+        log_message(f"✅ Reply mode {'active' if reply_mode else 'non-reply'} in {'Indonesian' if language_choice == 'id' else 'English'} language...")
         auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_reply, language_choice, reply_mode)
 
     else:
-        send_interval = int(input("Set Interval Pengiriman Pesan (dalam detik): "))
-        log_message("✅ Mode kirim pesan acak aktif...")
+        send_interval = int(input("Set message sending interval (in seconds): "))
+        log_message("✅ Random message sending mode active...")
 
         while True:
             message_text = get_random_message()
